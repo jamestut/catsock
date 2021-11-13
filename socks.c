@@ -174,7 +174,6 @@ int create_vsock_server(const char *s_cid, const char *s_port) {
     return -1;
   }
 
-  struct fd_list ret = {.count = 1};
   int s = socket(AF_VSOCK, SOCK_STREAM, 0);
   if (s < 0) {
     warn("Error creating VSOCK");
