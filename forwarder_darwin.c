@@ -91,7 +91,7 @@ void run_forwarder(void *inst) {
     else if (self->b21.filled && !self->b21.dstclose)
       EV_SET(&kevch[kevchlen++], self->fd1, EVFILT_WRITE, EV_ADD | EV_ENABLE | EV_DISPATCH, 0, 0, 0);
 
-    if (kevchlen == 0)
+    if (!kevchlen)
       exit(0);
 
     int kevreslen = kevent(self->kq, kevch, kevchlen, kevres, 4, NULL);
