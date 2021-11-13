@@ -13,6 +13,7 @@
 #include <sys/event.h>
 #include <sys/mman.h>
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/uio.h>
 #include <unistd.h>
 
@@ -22,6 +23,8 @@ struct buff_info {
   void *data;
   size_t filled;
   size_t written;
+  bool srcclose;
+  bool dstclose;
 };
 
 struct fwd_inst {
@@ -79,14 +82,17 @@ void run_forwarder(void *inst) {
 
     // do read if and only if buffer == empty
     // conversely, do write if and only if there is unfinished writes
-    if (!self->b12.filled)
+    if (!self->b12.filled && !self->b12.srcclose)
       EV_SET(&kevch[kevchlen++], self->fd1, EVFILT_READ, EV_ADD | EV_ENABLE | EV_DISPATCH, 0, 0, 0);
-    else
+    else if (self->b12.filled && !self->b12.dstclose)
       EV_SET(&kevch[kevchlen++], self->fd2, EVFILT_WRITE, EV_ADD | EV_ENABLE | EV_DISPATCH, 0, 0, 0);
-    if (!self->b21.filled)
+    if (!self->b21.filled && !self->b21.srcclose)
       EV_SET(&kevch[kevchlen++], self->fd2, EVFILT_READ, EV_ADD | EV_ENABLE | EV_DISPATCH, 0, 0, 0);
-    else
+    else if (self->b21.filled && !self->b21.dstclose)
       EV_SET(&kevch[kevchlen++], self->fd1, EVFILT_WRITE, EV_ADD | EV_ENABLE | EV_DISPATCH, 0, 0, 0);
+
+    if (kevchlen == 0)
+      exit(0);
 
     int kevreslen = kevent(self->kq, kevch, kevchlen, kevres, 4, NULL);
     if (kevreslen < 0) {
@@ -114,29 +120,39 @@ static void do_forward(size_t buffsz, struct buff_info *bi, int srcfd, int dstfd
       case EAGAIN:
       case EINTR:
         return;
+      default:
+        err(1, "Read error");
       }
-    } else if (rd == 0)
-      // EOF
-      errx(0, "Connection closed!");
+    } else if (rd == 0) {
+      shutdown(dstfd, SHUT_RD);
+      bi->srcclose = true;
+    }
     bi->written = 0;
     bi->filled = rd;
   }
-  ssize_t wr = write(dstfd, (void *)((uintptr_t)bi->data + bi->written), bi->filled - bi->written);
-  if (wr < 0) {
-    switch (errno) {
-    case EAGAIN:
-    case EINTR:
+
+  if (bi->filled) {
+    ssize_t wr = write(dstfd, (void *)((uintptr_t)bi->data + bi->written), bi->filled - bi->written);
+    if (wr < 0) {
+      switch (errno) {
+      case EAGAIN:
+      case EINTR:
+        return;
+      default:
+        err(1, "Write error");
+      }
+    } else if (wr == 0) {
+      shutdown(srcfd, SHUT_RDWR);
+      bi->srcclose = bi->dstclose = true;
+    }
+    bi->written += wr;
+    if (bi->written == bi->filled) {
+      bi->filled = 0;
       return;
     }
-  } else if (wr == 0)
-    // EOF
-    errx(0, "Cannot write anymore!");
-
-  bi->written += wr;
-  if (bi->written == bi->filled) {
-    bi->filled = 0;
-    return;
   }
+
+  return;
 }
 
 #endif
