@@ -127,8 +127,19 @@ static void start_server_loop(int svrfd, enum conn_mode cm_cli, const char **cli
     }
 
     pid_t pid = fork();
+    if (pid < 0) {
+      warn("Fork error");
+      close(commfd);
+      continue;
+    }
     if (!pid) {
-      // wait_debugger();
+      // double fork because we really don't want to deal with zombies!
+      pid_t pid2 = fork();
+      if (pid2 < 0)
+        err(1, "Fork error");
+      if (pid2)
+        exit(0);
+
       // child. make connection to the other end.
       int clifd = client_connect(cm_cli, cli_args);
       if (clifd < 0)
@@ -136,6 +147,8 @@ static void start_server_loop(int svrfd, enum conn_mode cm_cli, const char **cli
       // does not return
       start_client_loop(commfd, clifd);
     }
+
+    waitpid(pid, NULL, 0);
 
     // parent need not deal with commfd again. all child's.
     close(commfd);
