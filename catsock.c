@@ -36,8 +36,14 @@ int main(int argc, char **argv) {
 
   enum conn_mode cm_svr = parse_addrspec(argv[1], svr_args);
   enum conn_mode cm_cli = parse_addrspec(argv[2], cli_args);
-  if (!(cm_svr && cm_cli))
-    goto usage;
+  if (!cm_svr) {
+    puts("listen_addrspec is not recognised.");
+    return 1;
+  }
+  if (!cm_cli) {
+    puts("connect_addrspec is not recognised.");
+    return 1;
+  }
 
   int svrfd;
   switch (cm_svr) {
@@ -80,10 +86,11 @@ usage:
   puts("Available addrspecs:");
   puts(" - TCP:host:port");
   puts(" - TCP6:host:port");
+  puts(" - TCP6:[ipv6_addr]:port");
   puts(" - UDS:path");
   puts(" - VSOCK:cid:port (Linux only)");
   puts(" - VSOCKMULT:path:cid:port (connect only)");
-  return 0;
+  return 1;
 }
 
 static enum conn_mode parse_addrspec(char *arg, const char **outargs) {
@@ -106,13 +113,32 @@ static enum conn_mode parse_addrspec(char *arg, const char **outargs) {
 
   int num_args = cm & 0xf;
   int argidx = 0;
-  while (tok) {
-    if (argidx > num_args)
+  for (;;) {
+    if (argidx > num_args) {
       // extraneous argument found
       return CM_NONE;
-    tok = strsep(&arg, ":");
-    if (tok)
-      outargs[argidx++] = tok;
+    }
+    // find the next colon
+    int toklen = 0;
+    bool ignore_colon = arg[toklen] == '['; // for IPv6
+    bool has_bracket = false;
+    char argchr;
+    for (; (argchr = arg[toklen]); ++toklen) {
+      if (argchr == ']' && ignore_colon) {
+        ignore_colon = false;
+        has_bracket = true;
+      } else if (argchr == ':' && !ignore_colon) {
+        break;
+      }
+    }
+    tok = malloc(toklen + 1);
+    strncpy(tok + (has_bracket ? 1 : 0), arg, toklen - (has_bracket ? 2 : 0));
+    outargs[argidx++] = tok;
+    if (!argchr) {
+      // EOL reached
+      break;
+    }
+    arg += toklen + 1;
   }
 
   return cm;
