@@ -60,7 +60,7 @@ def build_linux(ap):
         sys.exit(1)
 
     # ensure the sysroots are specified
-    SYSROOT_VARS=[f'SYSROOT_{i.replace('-', '_')}' for i in TARGETS]
+    SYSROOT_VARS=[f'SYSROOT_{i.replace("-", "_")}' for i in TARGETS]
     sysroot_specified = True
     for tgt, v in zip(TARGETS, SYSROOT_VARS):
         if v not in os.environ:
@@ -92,7 +92,17 @@ def build_linux(ap):
         shutil.move(EXE_NAME, f'{EXE_NAME}-{SYSROOT_NAME}-{tgt}')
 
 def build_darwin(ap):
-    raise NotImplementedError()
+    args = ap.parse_args()
+
+    nproc = get_nproc(args)
+
+    make_env = os.environ.copy()
+    if args.verbose_linker:
+        make_env['LDFLAGS'] = '-v'
+    make_env['CFLAGS'] = '-arch x86_64 -arch arm64 -O2 -g0'
+
+    subprocess.run(['make', f'-j{nproc}'], env=make_env, check=True)
+    shutil.move(EXE_NAME, f'{EXE_NAME}-darwin-universal')
 
 if __name__ == '__main__':
     os.chdir(path.split(sys.argv[0])[0])
