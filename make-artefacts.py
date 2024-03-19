@@ -89,7 +89,7 @@ def build_linux(ap):
         subprocess.run(['make', 'clean'], check=True)
         subprocess.run(['make', f'-j{nproc}'], env=make_env, check=True)
         subprocess.run(['strip', EXE_NAME], check=True)
-        shutil.move(EXE_NAME, f'{EXE_NAME}-{SYSROOT_NAME}-{tgt}')
+        shutil.move(EXE_NAME, f'{EXE_NAME}-linux-{SYSROOT_NAME}-{tgt}')
 
 def build_darwin(ap):
     args = ap.parse_args()
